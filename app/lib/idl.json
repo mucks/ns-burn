@@ -1,0 +1,1681 @@
+{
+  "address": "7CLhdcpry5nkB1YmnzDnCrSHNiEmVsvSxdhB3LCReJAf",
+  "metadata": {
+    "name": "workout_poap",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Time-scoped workout attendance NFT program with QR-based claims"
+  },
+  "docs": [
+    "# Workout POAP Program",
+    "",
+    "A production-quality Solana program for minting time-scoped, trainer-customized",
+    "NFTs as proof of workout attendance via QR-based claims.",
+    "",
+    "## Core Concepts",
+    "",
+    "### Roles",
+    "- **Super Admin**: Controls the Config, can add/remove admins",
+    "- **Admins**: Can register trainers, manage schedules, open/close workout instances",
+    "- **Trainers**: Can open/close their own workout instances, display QR codes",
+    "- **Users/Attendees**: Can scan QR codes and claim NFTs",
+    "",
+    "### Flow",
+    "1. Admin initializes config",
+    "2. Admin adds other admins and registers trainers",
+    "3. Admin or Trainer opens a workout instance with:",
+    "- Date and time",
+    "- Claim window (when attendees can claim)",
+    "- Secret hash (SHA-256 of a random secret)",
+    "4. Trainer displays QR code containing {instance_pubkey, reveal_secret}",
+    "5. Attendees scan QR and call claim_nft",
+    "6. Program verifies:",
+    "- Current time is within claim window",
+    "- SHA-256(reveal_secret) matches stored hash",
+    "- User hasn't already claimed",
+    "7. Program mints NFT with metadata:",
+    "- Name includes date, time, and trainer",
+    "- Metadata URI points to workout details",
+    "8. Program increments user's monthly counter for leaderboard",
+    "",
+    "### Security",
+    "- Role-based access control via Admin and Trainer PDAs",
+    "- Time-windowed claims prevent late claims",
+    "- Secret hash verification proves physical attendance",
+    "- One claim per user per workout (enforced by Attendance PDA)",
+    "- All seeds are deterministic to prevent spoofing",
+    "",
+    "### Leaderboard",
+    "- MonthlyCounter PDAs track claims per user per month",
+    "- Clients query and sort counters for leaderboard display"
+  ],
+  "instructions": [
+    {
+      "name": "add_admin",
+      "docs": [
+        "Add a new admin.",
+        "",
+        "Only the super-admin (Config.authority) can call this."
+      ],
+      "discriminator": [
+        177,
+        236,
+        33,
+        205,
+        124,
+        152,
+        55,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The super-admin authority from Config"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The global config account"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_admin"
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "The admin account to create (PDA)",
+            "Seeds: [\"admin\", new_admin_pubkey]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "new_admin"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for account creation"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_nft",
+      "docs": [
+        "Claim an NFT for attending a workout.",
+        "",
+        "Users call this after scanning the QR code shown by the trainer.",
+        "The QR code contains the reveal_secret, which must hash to the stored secret_hash.",
+        "",
+        "This instruction:",
+        "- Verifies the claim window is valid",
+        "- Verifies the secret matches",
+        "- Mints an NFT with workout metadata",
+        "- Increments the user's monthly counter"
+      ],
+      "discriminator": [
+        6,
+        193,
+        146,
+        120,
+        48,
+        218,
+        69,
+        33
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "The user claiming the NFT"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "instance",
+          "docs": [
+            "The workout instance being claimed"
+          ]
+        },
+        {
+          "name": "trainer",
+          "docs": [
+            "The trainer who led this workout (needed for metadata)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  97,
+                  105,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "instance.trainer",
+                "account": "WorkoutInstance"
+              }
+            ]
+          }
+        },
+        {
+          "name": "attendance",
+          "docs": [
+            "The attendance record (PDA)",
+            "Seeds: [\"attendance\", instance, user]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  116,
+                  101,
+                  110,
+                  100,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "instance"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "monthly_counter",
+          "docs": [
+            "The monthly counter (PDA)",
+            "Seeds: [\"monthly\", user, yyyymm]"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for account creation"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "reveal_secret",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "close_workout_instance",
+      "docs": [
+        "Close a workout instance.",
+        "",
+        "Can be called by any admin or the assigned trainer.",
+        "Prevents any further claims for this workout."
+      ],
+      "discriminator": [
+        11,
+        235,
+        101,
+        73,
+        158,
+        72,
+        179,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The caller (admin or trainer)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "Optional: Admin account if called by an admin"
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "trainer",
+          "docs": [
+            "The trainer for this workout"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  97,
+                  105,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "instance.trainer",
+                "account": "WorkoutInstance"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instance",
+          "docs": [
+            "The workout instance to close"
+          ],
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_config",
+      "docs": [
+        "Initialize the global configuration.",
+        "",
+        "Must be called once before any other instructions.",
+        "Sets the super-admin and optionally a collection mint for grouping NFTs."
+      ],
+      "discriminator": [
+        208,
+        127,
+        21,
+        1,
+        194,
+        190,
+        196,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The super-admin who will have ultimate control over the program"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The global config account (PDA)",
+            "Seeds: [\"config\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for account creation"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "collection_mint",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "open_workout_instance",
+      "docs": [
+        "Open a new workout instance.",
+        "",
+        "Can be called by any admin or the assigned trainer.",
+        "Creates a WorkoutInstance with a claim window and secret hash.",
+        "After the workout, the trainer displays a QR code with the reveal_secret."
+      ],
+      "discriminator": [
+        130,
+        109,
+        62,
+        244,
+        204,
+        126,
+        170,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The caller (admin or trainer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "Optional: Admin account if called by an admin",
+            "If present, validates the caller is an admin"
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "trainer",
+          "docs": [
+            "The trainer for this workout",
+            "If authority is not an admin, they must be this trainer"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  97,
+                  105,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "trainer.authority",
+                "account": "Trainer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instance",
+          "docs": [
+            "The workout instance to create (PDA)",
+            "Seeds: [\"instance\", trainer_pubkey, yyyymmdd, hour, minute]"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for account creation"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "yyyymmdd",
+          "type": "u32"
+        },
+        {
+          "name": "hour",
+          "type": "u8"
+        },
+        {
+          "name": "minute",
+          "type": "u8"
+        },
+        {
+          "name": "window_start_ts",
+          "type": "i64"
+        },
+        {
+          "name": "window_end_ts",
+          "type": "i64"
+        },
+        {
+          "name": "secret_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "metadata_uri_override",
+          "type": {
+            "option": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "register_trainer",
+      "docs": [
+        "Register a new trainer.",
+        "",
+        "Any admin can call this. Trainers can then start/close workout instances."
+      ],
+      "discriminator": [
+        121,
+        107,
+        173,
+        197,
+        133,
+        83,
+        140,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "admin_authority",
+          "docs": [
+            "An admin who can register trainers"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "The admin account proving authorization"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "trainer_pubkey"
+        },
+        {
+          "name": "trainer",
+          "docs": [
+            "The trainer account to create (PDA)",
+            "Seeds: [\"trainer\", trainer_pubkey]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  97,
+                  105,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "trainer_pubkey"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for account creation"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "display_name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "remove_admin",
+      "docs": [
+        "Remove an admin.",
+        "",
+        "Only the super-admin (Config.authority) can call this."
+      ],
+      "discriminator": [
+        74,
+        202,
+        71,
+        106,
+        252,
+        31,
+        72,
+        183
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The super-admin authority from Config"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The global config account"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "The admin account to remove (will be closed)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin.authority",
+                "account": "Admin"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_schedule",
+      "docs": [
+        "Create or update a workout schedule template.",
+        "",
+        "Schedules define recurring workout times (e.g., Mon-Fri at 7:00 AM).",
+        "Admins use these as templates to create WorkoutInstance accounts."
+      ],
+      "discriminator": [
+        224,
+        44,
+        153,
+        248,
+        237,
+        182,
+        26,
+        154
+      ],
+      "accounts": [
+        {
+          "name": "admin_authority",
+          "docs": [
+            "An admin who can manage schedules"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "The admin account proving authorization"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "schedule",
+          "docs": [
+            "The schedule account (PDA)",
+            "Seeds: [\"schedule\", schedule_id]",
+            "Using init_if_needed to allow updates"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  99,
+                  104,
+                  101,
+                  100,
+                  117,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "schedule_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for account creation"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "schedule_id",
+          "type": "string"
+        },
+        {
+          "name": "slots",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "DaySlot"
+              }
+            }
+          }
+        },
+        {
+          "name": "is_active",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Admin",
+      "discriminator": [
+        244,
+        158,
+        220,
+        65,
+        8,
+        73,
+        4,
+        65
+      ]
+    },
+    {
+      "name": "Attendance",
+      "discriminator": [
+        86,
+        179,
+        13,
+        208,
+        153,
+        204,
+        118,
+        63
+      ]
+    },
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "MonthlyCounter",
+      "discriminator": [
+        200,
+        43,
+        220,
+        54,
+        166,
+        99,
+        178,
+        25
+      ]
+    },
+    {
+      "name": "Schedule",
+      "discriminator": [
+        217,
+        243,
+        116,
+        56,
+        73,
+        82,
+        207,
+        51
+      ]
+    },
+    {
+      "name": "Trainer",
+      "discriminator": [
+        7,
+        190,
+        144,
+        244,
+        15,
+        161,
+        210,
+        92
+      ]
+    },
+    {
+      "name": "WorkoutInstance",
+      "discriminator": [
+        89,
+        162,
+        132,
+        86,
+        247,
+        162,
+        78,
+        132
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AdminAdded",
+      "discriminator": [
+        23,
+        13,
+        37,
+        90,
+        130,
+        53,
+        75,
+        251
+      ]
+    },
+    {
+      "name": "AdminRemoved",
+      "discriminator": [
+        59,
+        133,
+        36,
+        27,
+        156,
+        79,
+        75,
+        146
+      ]
+    },
+    {
+      "name": "Claimed",
+      "discriminator": [
+        217,
+        192,
+        123,
+        72,
+        108,
+        150,
+        248,
+        33
+      ]
+    },
+    {
+      "name": "TrainerRegistered",
+      "discriminator": [
+        1,
+        241,
+        137,
+        155,
+        131,
+        152,
+        44,
+        114
+      ]
+    },
+    {
+      "name": "WorkoutClosed",
+      "discriminator": [
+        177,
+        198,
+        23,
+        191,
+        40,
+        200,
+        198,
+        163
+      ]
+    },
+    {
+      "name": "WorkoutOpened",
+      "discriminator": [
+        253,
+        242,
+        90,
+        48,
+        101,
+        160,
+        34,
+        241
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not an admin"
+    },
+    {
+      "code": 6001,
+      "name": "NotConfigAuthority",
+      "msg": "Unauthorized: caller is not the config authority"
+    },
+    {
+      "code": 6002,
+      "name": "NotAssignedTrainer",
+      "msg": "Unauthorized: caller is not the assigned trainer for this workout"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidClaimWindow",
+      "msg": "Invalid claim window: current time is outside the allowed window"
+    },
+    {
+      "code": 6004,
+      "name": "InstanceClosed",
+      "msg": "Workout instance is already closed"
+    },
+    {
+      "code": 6005,
+      "name": "AlreadyClaimed",
+      "msg": "Already claimed: user has already claimed an NFT for this workout"
+    },
+    {
+      "code": 6006,
+      "name": "HashMismatch",
+      "msg": "Hash mismatch: provided secret does not match the stored hash"
+    },
+    {
+      "code": 6007,
+      "name": "EmptySchedule",
+      "msg": "Invalid schedule: must have at least one time slot"
+    },
+    {
+      "code": 6008,
+      "name": "TooManySlots",
+      "msg": "Schedule has too many slots (max 20)"
+    },
+    {
+      "code": 6009,
+      "name": "DisplayNameTooLong",
+      "msg": "Display name too long (max 64 bytes)"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidTimeWindow",
+      "msg": "Invalid time: window_end_ts must be after window_start_ts"
+    },
+    {
+      "code": 6011,
+      "name": "MetadataUriTooLong",
+      "msg": "Metadata URI override too long (max 200 bytes)"
+    }
+  ],
+  "types": [
+    {
+      "name": "Admin",
+      "docs": [
+        "Admin account representing a registered administrator.",
+        "",
+        "Seeds: [\"admin\", admin_pubkey]",
+        "",
+        "Admins can:",
+        "- Register trainers",
+        "- Create and manage workout schedules",
+        "- Open and close workout instances",
+        "- Add or remove other admins (if they are the super-admin from Config)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The public key of this admin"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AdminAdded",
+      "docs": [
+        "Event emitted when a new admin is added."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "The new admin's public key"
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AdminRemoved",
+      "docs": [
+        "Event emitted when an admin is removed."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "The removed admin's public key"
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Attendance",
+      "docs": [
+        "Attendance record for a user at a specific workout instance.",
+        "",
+        "Seeds: [\"attendance\", instance_pubkey, user_pubkey]",
+        "",
+        "This account:",
+        "- Proves a user attended a specific workout",
+        "- Prevents double-claiming (one NFT per user per workout)",
+        "- Stores the minted NFT address for reference"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "instance",
+            "docs": [
+              "The workout instance this attendance record belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "docs": [
+              "The user who attended"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "claimed",
+            "docs": [
+              "Whether the user has claimed their NFT"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "nft_mint",
+            "docs": [
+              "The NFT mint address (set after successful claim)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Claimed",
+      "docs": [
+        "Event emitted when a user successfully claims an NFT.",
+        "",
+        "This helps track attendance and automatically updates leaderboards."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "instance",
+            "docs": [
+              "The workout instance that was claimed"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "docs": [
+              "The user who claimed"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "nft_mint",
+            "docs": [
+              "The minted NFT address"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "yyyymm",
+            "docs": [
+              "The month this claim counts towards (YYYYMM format)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "new_monthly_count",
+            "docs": [
+              "The user's new total for this month"
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "docs": [
+        "Global configuration for the workout POAP program.",
+        "",
+        "Seeds: [\"config\"]",
+        "",
+        "This account stores:",
+        "- The super-admin authority who can add/remove other admins",
+        "- An optional collection mint to group all workout NFTs under one collection"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The super-admin public key with ultimate control"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collection_mint",
+            "docs": [
+              "Optional: A pre-created collection NFT mint to group all session NFTs",
+              "If set, all minted NFTs will be set as part of this collection"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed for secure derivation"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DaySlot",
+      "docs": [
+        "A single time slot in a weekly schedule.",
+        "Represents a specific day of week + time when a workout occurs."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dow",
+            "docs": [
+              "Day of week: 0 = Sunday, 1 = Monday, ..., 6 = Saturday"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "hour",
+            "docs": [
+              "Hour in 24-hour format (0-23)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "minute",
+            "docs": [
+              "Minute (0-59)"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MonthlyCounter",
+      "docs": [
+        "Monthly counter tracking a user's workout attendance for a specific month.",
+        "",
+        "Seeds: [\"monthly\", user_pubkey, yyyymm (u32 as bytes)]",
+        "",
+        "This account:",
+        "- Tracks how many workouts a user attended in a given month",
+        "- Enables leaderboard functionality (most active users per month)",
+        "- Is automatically incremented when a user claims an NFT",
+        "",
+        "Example: For October 2025, yyyymm = 202510"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "docs": [
+              "The user this counter belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "yyyymm",
+            "docs": [
+              "Year and month in YYYYMM format (e.g., 202510 for October 2025)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "count",
+            "docs": [
+              "Number of workouts attended this month"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Schedule",
+      "docs": [
+        "Schedule account representing a recurring workout schedule template.",
+        "",
+        "Seeds: [\"schedule\", schedule_id (as bytes)]",
+        "",
+        "Schedules define recurring workout times (e.g., Mon-Fri at 7:00 AM and 6:00 PM).",
+        "Admins use schedules as templates to create actual WorkoutInstance accounts."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "created_by",
+            "docs": [
+              "The admin who created this schedule"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "slots",
+            "docs": [
+              "Array of time slots (up to 20 slots for flexibility)",
+              "Each slot represents a recurring time in the week"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "DaySlot"
+                }
+              }
+            }
+          },
+          {
+            "name": "is_active",
+            "docs": [
+              "Whether this schedule is currently active"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Trainer",
+      "docs": [
+        "Trainer account representing a registered workout trainer.",
+        "",
+        "Seeds: [\"trainer\", trainer_pubkey]",
+        "",
+        "Trainers can:",
+        "- Start and close workout instances they are assigned to",
+        "- Generate QR codes for attendees to claim NFTs"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The public key of this trainer"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "display_name",
+            "docs": [
+              "Display name for the trainer (used in NFT metadata)",
+              "Max length: 64 bytes for UTF-8 encoded string"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TrainerRegistered",
+      "docs": [
+        "Event emitted when a new trainer is registered."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "trainer",
+            "docs": [
+              "The trainer's public key"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "display_name",
+            "docs": [
+              "The trainer's display name"
+            ],
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorkoutClosed",
+      "docs": [
+        "Event emitted when a workout instance is closed.",
+        "",
+        "After this event, no more claims can be made for this workout."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "instance",
+            "docs": [
+              "The workout instance that was closed"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "trainer",
+            "docs": [
+              "The trainer who led the workout"
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorkoutInstance",
+      "docs": [
+        "WorkoutInstance represents a specific occurrence of a workout session.",
+        "",
+        "Seeds: [\"instance\", trainer_pubkey, yyyymmdd (u32 as bytes), hour (u8 as bytes), minute (u8 as bytes)]",
+        "",
+        "Each instance:",
+        "- Has a specific date and time",
+        "- Is led by a specific trainer",
+        "- Has a time window during which attendees can claim NFTs",
+        "- Contains a hash of a secret that attendees must provide (via QR scan) to prove they attended",
+        "",
+        "Flow:",
+        "1. Admin/Trainer opens the instance before/during the workout with a secret_hash",
+        "2. After the workout, trainer displays a QR code with the reveal_secret",
+        "3. Attendees scan the QR and submit the reveal_secret to claim their NFT",
+        "4. The program verifies sha256(reveal_secret) matches the stored secret_hash"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "trainer",
+            "docs": [
+              "The trainer leading this workout"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "start_ts",
+            "docs": [
+              "Unix timestamp when the instance was created/started"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "window_start_ts",
+            "docs": [
+              "Unix timestamp when the claim window opens",
+              "Typically set to the actual workout start time or shortly after"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "window_end_ts",
+            "docs": [
+              "Unix timestamp when the claim window closes",
+              "Usually 15-30 minutes after the workout ends"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "secret_hash",
+            "docs": [
+              "SHA-256 hash of the reveal_secret",
+              "The reveal_secret is shown in the QR code after the workout"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "is_closed",
+            "docs": [
+              "Whether this instance has been closed (prevents further claims)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "yyyymmdd",
+            "docs": [
+              "Date of the workout in YYYYMMDD format (e.g., 20251028)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "hour",
+            "docs": [
+              "Hour of the workout (0-23)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "minute",
+            "docs": [
+              "Minute of the workout (0-59)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "metadata_uri_override",
+            "docs": [
+              "Optional: Override metadata URI for custom artwork",
+              "If empty, the program will use a default metadata template"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorkoutOpened",
+      "docs": [
+        "Event emitted when a new workout instance is opened.",
+        "",
+        "This helps indexers and UIs track when new workout sessions are available for claiming."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "instance",
+            "docs": [
+              "The public key of the workout instance account"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "trainer",
+            "docs": [
+              "The trainer leading this workout"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "window_start_ts",
+            "docs": [
+              "When the claim window opens"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "window_end_ts",
+            "docs": [
+              "When the claim window closes"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "yyyymmdd",
+            "docs": [
+              "The date in YYYYMMDD format"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "hour",
+            "docs": [
+              "Hour of the workout"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "minute",
+            "docs": [
+              "Minute of the workout"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

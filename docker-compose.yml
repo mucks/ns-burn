@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  workout-poap-client:
+    # Build locally
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    # Or use the pre-built image from GitHub Container Registry:
+    # image: ghcr.io/YOUR_GITHUB_USERNAME/workout-poap/workout-poap-client:latest
+    container_name: ns-burn-web
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NEXT_PUBLIC_SOLANA_NETWORK=${NEXT_PUBLIC_SOLANA_NETWORK:-https://api.devnet.solana.com}
+    networks:
+      - web
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+
+      # Router configuration
+      - "traefik.http.routers.nsburn.rule=Host(`${NS_BURN_DOMAIN:-ns-burn.mucks.me}`)"
+      - "traefik.http.routers.nsburn.entrypoints=websecure"
+      - "traefik.http.routers.nsburn.tls.certresolver=letsencrypt"
+
+      # Service configuration
+      - "traefik.http.services.nsburn.loadbalancer.server.port=3000"
+
+      # Middleware - security headers
+      - "traefik.http.routers.nsburn.middlewares=nsburn-headers"
+      - "traefik.http.middlewares.nsburn-headers.headers.customresponseheaders.X-Frame-Options=SAMEORIGIN"
+      - "traefik.http.middlewares.nsburn-headers.headers.customresponseheaders.X-Content-Type-Options=nosniff"
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  web:
+    external: true
