@@ -1,0 +1,171 @@
+name: Deploy Workout POAP to Server
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/workout-poap/workout-poap-client
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    name: Deploy to Server
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        env:
+          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          NEXT_PUBLIC_SOLANA_NETWORK: ${{ secrets.NEXT_PUBLIC_SOLANA_NETWORK }}
+          NS_BURN_DOMAIN: ${{ secrets.NS_BURN_DOMAIN }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: IMAGE_NAME,GITHUB_TOKEN,GITHUB_ACTOR,NEXT_PUBLIC_SOLANA_NETWORK,NS_BURN_DOMAIN
+          script: |
+            #!/bin/bash
+            set -e
+            
+            echo "🚀 Starting Workout POAP deployment..."
+            
+            # Configuration
+            DEPLOY_DIR="/home/${{ secrets.SERVER_USER }}/ns-burn-on-solana"
+            NS_BURN_DOMAIN="${NS_BURN_DOMAIN:-ns-burn.mucks.me}"
+            NEXT_PUBLIC_SOLANA_NETWORK="${NEXT_PUBLIC_SOLANA_NETWORK:-https://api.devnet.solana.com}"
+            
+            # Step 1: Create deployment directory
+            echo "📁 Creating deployment directory..."
+            mkdir -p "$DEPLOY_DIR"
+            
+            # Step 2: Navigate to deployment directory
+            echo "📂 Navigating to deployment directory..."
+            cd "$DEPLOY_DIR"
+            
+            # Step 3: Login to GitHub Container Registry
+            echo "🔐 Logging in to GitHub Container Registry..."
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            
+            # Step 4: Create docker-compose.yml
+            echo "📝 Creating docker-compose.yml..."
+            cat > docker-compose.yml << 'EOF'
+            version: '3.8'
+            
+            services:
+              workout-poap-client:
+                image: ${IMAGE_NAME}
+                container_name: ns-burn-web
+                expose:
+                  - "3000"
+                environment:
+                  - NEXT_PUBLIC_SOLANA_NETWORK=${NEXT_PUBLIC_SOLANA_NETWORK}
+                networks:
+                  - web
+                labels:
+                  # Enable Traefik
+                  - "traefik.enable=true"
+                  
+                  # Router configuration
+                  - "traefik.http.routers.nsburn.rule=Host(`${NS_BURN_DOMAIN}`)"
+                  - "traefik.http.routers.nsburn.entrypoints=websecure"
+                  - "traefik.http.routers.nsburn.tls.certresolver=letsencrypt"
+                  
+                  # Service configuration
+                  - "traefik.http.services.nsburn.loadbalancer.server.port=3000"
+                  
+                  # Middleware - security headers
+                  - "traefik.http.routers.nsburn.middlewares=nsburn-headers"
+                  - "traefik.http.middlewares.nsburn-headers.headers.customresponseheaders.X-Frame-Options=SAMEORIGIN"
+                  - "traefik.http.middlewares.nsburn-headers.headers.customresponseheaders.X-Content-Type-Options=nosniff"
+                restart: unless-stopped
+                healthcheck:
+                  test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+                  start_period: 40s
+            
+            networks:
+              web:
+                external: true
+            EOF
+            
+            # Step 5: Create .env file
+            echo "⚙️  Creating .env file..."
+            cat > .env << EOF
+            IMAGE_NAME=${IMAGE_NAME}
+            NEXT_PUBLIC_SOLANA_NETWORK=${NEXT_PUBLIC_SOLANA_NETWORK}
+            NS_BURN_DOMAIN=${NS_BURN_DOMAIN}
+            EOF
+            
+            # Step 6: Pull the latest image
+            echo "📦 Pulling latest image..."
+            docker pull "${IMAGE_NAME}"
+            
+            # Step 7: Stop and remove old container
+            echo "🛑 Stopping old container..."
+            docker compose down || echo "No existing container to stop"
+            
+            # Step 8: Start new container
+            echo "🚀 Starting new container..."
+            docker compose up -d
+            
+            # Step 9: Clean up old images
+            echo "🧹 Cleaning up old images..."
+            docker image prune -af
+            
+            # Step 10: Show status
+            echo "📊 Container status:"
+            docker compose ps
+            
+            echo ""
+            echo "========================================"
+            echo "🎉 Deployment complete!"
+            echo "========================================"
+            echo "Application: https://${NS_BURN_DOMAIN}"
+            echo "Directory: ${DEPLOY_DIR}"
+            echo "========================================"
+

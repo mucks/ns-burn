@@ -1,55 +1,175 @@
 # Workout POAP Scripts
 
-## simple-admin.js
+Utility scripts for managing the Workout POAP deployment.
 
-Initialize the program config and add an admin.
+## GitHub Secrets Setup
 
-### Usage
-
-```bash
-yarn add-admin <admin-wallet-address>
-```
-
-Or directly:
+### Option 1: Interactive Setup (Recommended)
 
 ```bash
-node scripts/simple-admin.js <admin-wallet-address>
+./scripts/setup-github-secrets.sh
 ```
 
-### Example
+This script will:
+- ✅ Check if GitHub CLI is installed and authenticated
+- ✅ Prompt for each secret value
+- ✅ Load SSH key from file automatically
+- ✅ Add all secrets to your repository
 
+### Option 2: From Environment Variables
+
+```bash
+# Set environment variables
+export SERVER_HOST="123.45.67.89"
+export SERVER_USER="mucks"
+export SERVER_SSH_KEY=$(cat ~/.ssh/id_rsa)
+export NEXT_PUBLIC_SOLANA_NETWORK="https://api.devnet.solana.com"
+export NS_BURN_DOMAIN="ns-burn.mucks.me"
+
+# Run script
+./scripts/setup-github-secrets-from-env.sh
+```
+
+### Option 3: From .env File
+
+```bash
+# Create secrets file
+cp scripts/.secrets.env.example .secrets.env
+
+# Edit with your values
+nano .secrets.env
+
+# Run script
+./scripts/setup-github-secrets-from-env.sh .secrets.env
+```
+
+**⚠️ Important:** Add `.secrets.env` to `.gitignore` to avoid committing secrets!
+
+## Prerequisites
+
+### Install GitHub CLI
+
+**macOS:**
+```bash
+brew install gh
+```
+
+**Linux:**
+```bash
+# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update
+sudo apt install gh
+```
+
+**Windows:**
+```powershell
+winget install --id GitHub.cli
+```
+
+### Authenticate GitHub CLI
+
+```bash
+gh auth login
+```
+
+Follow the prompts to authenticate with your GitHub account.
+
+## Admin Management
+
+### Add Admin
+
+```bash
+# Add a wallet address as admin
+yarn add-admin WALLET_ADDRESS
+```
+
+Example:
 ```bash
 yarn add-admin 61v15QuxKDBDy31AoEUf1VztnueXo54miipRoZmpeMXh
 ```
 
-### What it does
+**Note:** You need to have a local Solana validator running and the program deployed.
 
-1. Checks if the program config is initialized
-2. If not, initializes it with your wallet as the super admin  
-3. Adds the specified address as an admin
-4. If the admin already exists, it will notify you
+## Verify Secrets
 
-### Requirements
+After adding secrets, verify they were added:
 
-- Make sure you have a local Solana validator running (`solana-test-validator`)
-- Your wallet must have SOL for transaction fees  
-- The program must be deployed to your local validator
+```bash
+# List all secrets
+gh secret list
 
-### Example Output
-
+# Output example:
+# SERVER_HOST              Updated 2024-01-15
+# SERVER_USER              Updated 2024-01-15
+# SERVER_SSH_KEY           Updated 2024-01-15
+# NEXT_PUBLIC_SOLANA_NETWORK  Updated 2024-01-15
+# NS_BURN_DOMAIN           Updated 2024-01-15
 ```
-🔑 Admin to add: 61v15QuxKDBDy31AoEUf1VztnueXo54miipRoZmpeMXh
-💼 Wallet: Dz4pP3fWV9kimafmaE5QHjdq6uGVtLoL6Rf8kHhoHboM
-📝 Program ID: 7CLhdcpry5nkB1YmnzDnCrSHNiEmVsvSxdhB3LCReJAf 
 
-📍 Config PDA: 3qBRkDTq2Cd5AbsMLvKawHfP3zaj7VWtL5jriKbjZrqp
-📍 Admin PDA: 9yJdkbVdKC6nKKfESQbT5JbARit39fo9fuNXvQF3SjTJ 
+## Update Secrets
 
-📦 Initializing config...
-✅ Config initialized! TX: 4CSWAfXUL5YPFT5gCzV8uJi34jMVST6FeET4hm3o2cq3AoWZsnnHpgAqGA4NxgqupWqtf2XUkRYQ3AbZ9vQbaQ54 
+To update an existing secret:
 
-👤 Adding admin...
-✅ Admin added! TX: 4pij8roXQynZrnjnXr4uFciYg783n4KUXnTmon31Mo3Kxzx5KZSyzcXaD6ohrAhA7RNa5cR5K7ztz83S9DdQqEHh 
+```bash
+# Using gh CLI directly
+echo "new-value" | gh secret set SECRET_NAME
 
-🎊 Done!
+# Or re-run the setup script
+./scripts/setup-github-secrets.sh
 ```
+
+## Delete Secrets
+
+```bash
+gh secret delete SECRET_NAME
+```
+
+## Troubleshooting
+
+### "gh: command not found"
+
+Install GitHub CLI (see Prerequisites above).
+
+### "failed to get authenticated user"
+
+Authenticate with GitHub:
+```bash
+gh auth login
+```
+
+### "HTTP 404: Not Found"
+
+Make sure you're in the correct repository directory:
+```bash
+cd /path/to/ns-burn-on-solana
+gh repo view  # Should show your repository
+```
+
+### SSH Key Issues
+
+Verify your SSH key exists:
+```bash
+ls -la ~/.ssh/id_rsa
+cat ~/.ssh/id_rsa  # Should show BEGIN OPENSSH PRIVATE KEY
+```
+
+If you don't have an SSH key:
+```bash
+ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+```
+
+## Security Notes
+
+- ✅ Secrets are encrypted by GitHub
+- ✅ Secrets are only accessible to GitHub Actions
+- ✅ Scripts don't log secret values
+- ⚠️ Never commit `.secrets.env` to git
+- ⚠️ Keep your SSH private key secure
+
+## Additional Resources
+
+- [GitHub CLI Documentation](https://cli.github.com/manual/)
+- [GitHub Secrets Documentation](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+- [SSH Key Generation](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent)

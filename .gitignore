@@ -1,34 +1,59 @@
-# Anchor
-.anchor
-target/
-**/*.rs.bk
-node_modules/
-test-ledger/
-.yarn/
+# Dependencies
+node_modules
+.pnp
+.pnp.js
 
-# IDL
-target/idl/
-target/types/
+# Testing
+coverage
 
 # Next.js
-app/.next/
-app/out/
-app/build
-app/dist
+.next/
+out/
+
+# Production
+build
+dist
 
 # Misc
 .DS_Store
 *.pem
-.env
-.env.local
-.env.production.local
 
 # Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local
-*.log
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Secrets (NEVER COMMIT!)
+.secrets.env
+*.key
+*.pem
+
+# Vercel
 .vercel
 
+# Typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Solana/Anchor
+.anchor
+target/
+test-ledger/
+.solana/
+
+# IDEs
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

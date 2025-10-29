@@ -10,7 +10,9 @@
         "deploy": "anchor deploy",
         "deploy:devnet": "anchor deploy --provider.cluster devnet",
         "add-admin": "node scripts/simple-admin.js",
-        "initialize": "ts-node scripts/initialize.ts"
+        "initialize": "ts-node scripts/initialize.ts",
+        "setup-secrets": "./scripts/setup-github-secrets.sh",
+        "setup-secrets:env": "./scripts/setup-github-secrets-from-env.sh"
     },
     "dependencies": {
         "@coral-xyz/anchor": "^0.30.1",
